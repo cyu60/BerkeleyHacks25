@@ -1,4 +1,5 @@
 import { ChevronRightIcon } from '@heroicons/react/20/solid'
+import Link from 'next/link'
 
 export default function Hero() {
   return (
@@ -18,7 +19,7 @@ export default function Hero() {
                 </div>
                 
                 <div className="mt-24 sm:mt-32 lg:mt-16">
-                  <a href="#" className="inline-flex space-x-6">
+                  <div className="inline-flex space-x-6">
                     <span className="rounded-full bg-purple-600/20 px-3 py-1 text-sm/6 font-semibold text-purple-300 ring-1 ring-inset ring-purple-500/30">
                       Built with Letta
                     </span>
@@ -26,28 +27,31 @@ export default function Hero() {
                       <span>Beta v0.1.0</span>
                       <ChevronRightIcon className="size-5 text-gray-500" aria-hidden="true" />
                     </span>
-                  </a>
+                  </div>
                 </div>
                 
                 <h1 className="mt-10 text-pretty text-5xl font-semibold tracking-tight text-white sm:text-7xl">
-                  Intelligence Broker for AI Agents
+                  VOW: Verified Operations Wrapper
                 </h1>
                 
                 <p className="mt-8 text-pretty text-lg font-medium text-gray-300 sm:text-xl/8">
-                  Revolutionizing AI interactions through alternative value exchanges—where information, 
-                  promises, and insights become currency for accessing AI services.
+                  A trust layer for AI.
+                </p>
+                
+                <p className="mt-4 text-pretty text-lg font-medium text-gray-300 sm:text-xl/8">
+                  VOW revolutionizes AI interactions by turning information, promises, and insights into currency.
                 </p>
                 
                 <div className="mt-10 flex items-center gap-x-6">
-                  <a
+                  <Link
                     href="/agents"
                     className="rounded-md bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
                   >
                     Explore Agents
-                  </a>
-                  <a href="/agents" className="text-sm/6 font-semibold text-gray-300 hover:text-white transition-colors">
-                    View Agent Ecosystem <span aria-hidden="true">→</span>
-                  </a>
+                  </Link>
+                  <Link href="/vow-broker-flow" className="text-sm/6 font-semibold text-gray-300 hover:text-white transition-colors">
+                    Visualise VOW Broker Agent Flow <span aria-hidden="true">→</span>
+                  </Link>
                 </div>
               </div>
             </div>

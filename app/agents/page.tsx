@@ -226,25 +226,18 @@ export default function AgentsPage() {
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <Link
-                href="/create-client-agent"
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-80 text-white px-6 py-3 rounded-lg font-medium transition-opacity"
-              >
-                <span className="text-lg">👤</span>
-                Create Client Agent
-              </Link>
-              <Link
-                href="/create-service-agent"
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:opacity-80 text-white px-6 py-3 rounded-lg font-medium transition-opacity"
-              >
-                <span className="text-lg">⚙️</span>
-                Create Service Agent
-              </Link>
-              <Link
                 href="/create-broker-agent"
                 className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-80 text-white px-6 py-3 rounded-lg font-medium transition-opacity"
               >
                 <span className="text-lg">🧠</span>
                 Create Broker Agent
+              </Link>
+              <Link
+                href="/conversations"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-green-600 to-teal-600 hover:opacity-80 text-white px-6 py-3 rounded-lg font-medium transition-opacity"
+              >
+                <span className="text-lg">💬</span>
+                View Conversations
               </Link>
             </div>
           </div>

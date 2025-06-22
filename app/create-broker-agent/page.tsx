@@ -2,14 +2,82 @@
 
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
+interface LettaAgent {
+  id: string;
+  name: string;
+  created_at: string;
+  memory?: {
+    persona?: string;
+  };
+}
 
 export default function CreateBrokerAgentPage() {
   const router = useRouter();
   const [brokerName, setBrokerName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<LettaAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedClientAgents, setSelectedClientAgents] = useState<string[]>([]);
+  const [selectedServiceAgents, setSelectedServiceAgents] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  const fetchAgents = async () => {
+    try {
+      const response = await fetch("/api/letta/agents");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agents: ${response.statusText}`);
+      }
+      const agentData = await response.json();
+      setAgents(agentData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch agents");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const categorizeAgent = (agent: LettaAgent) => {
+    const persona = agent.memory?.persona?.toLowerCase() || "";
+    const name = agent.name.toLowerCase();
+
+    if (
+      persona.includes("broker") ||
+      persona.includes("orchestrat") ||
+      name.includes("broker") ||
+      name.includes("vow")
+    ) {
+      return "broker";
+    } else if (
+      persona.includes("client") ||
+      persona.includes("user") ||
+      name.includes("client")
+    ) {
+      return "client";
+    } else if (
+      persona.includes("service") ||
+      persona.includes("api") ||
+      persona.includes("model") ||
+      name.includes("service") ||
+      name.includes("travel") ||
+      name.includes("tutor") ||
+      name.includes("medical") ||
+      name.includes("code") ||
+      name.includes("research")
+    ) {
+      return "service";
+    }
+    return "other";
+  };
+
+  const clientAgents = agents.filter(agent => categorizeAgent(agent) === "client");
+  const serviceAgents = agents.filter(agent => categorizeAgent(agent) === "service");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,26 +87,16 @@ export default function CreateBrokerAgentPage() {
       return;
     }
 
-    // Check if LETTA_API_KEY is not set in environment, then prompt for it
-    const needsApiKey = !process.env.LETTA_API_KEY;
-    let apiKey = null;
-    
-    if (needsApiKey) {
-      apiKey = prompt("Please enter your Letta API key:");
-      if (!apiKey?.trim()) {
-        setError("API key is required to create the agent");
-        return;
-      }
-    }
 
     setCreating(true);
     setError(null);
 
     try {
-      const requestBody: any = { name: brokerName };
-      if (apiKey) {
-        requestBody.apiKey = apiKey;
-      }
+      const requestBody = { 
+        name: brokerName,
+        clientAgentIds: selectedClientAgents,
+        serviceAgentIds: selectedServiceAgents
+      };
 
       const response = await fetch("/api/letta/agents/create-broker", {
         method: "POST",
@@ -109,6 +167,80 @@ export default function CreateBrokerAgentPage() {
                 />
                 <p className="text-sm text-gray-400 mt-2">
                   Choose a descriptive name for your broker agent
+                </p>
+              </div>
+
+              {/* Client Agents Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Assign Client Agents
+                </label>
+                {loading ? (
+                  <div className="text-gray-400">Loading agents...</div>
+                ) : clientAgents.length > 0 ? (
+                  <div className="space-y-2 max-h-32 overflow-y-auto bg-slate-700/30 rounded-lg p-3">
+                    {clientAgents.map((agent) => (
+                      <label key={agent.id} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedClientAgents.includes(agent.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedClientAgents([...selectedClientAgents, agent.id]);
+                            } else {
+                              setSelectedClientAgents(selectedClientAgents.filter(id => id !== agent.id));
+                            }
+                          }}
+                          className="rounded border-slate-600 bg-slate-700 text-purple-500"
+                          disabled={creating}
+                        />
+                        <span className="text-sm text-gray-300">{agent.name}</span>
+                        <span className="text-xs text-gray-500">({agent.id})</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm">No client agents found</div>
+                )}
+                <p className="text-sm text-gray-400 mt-2">
+                  Select which client agents this broker will coordinate with
+                </p>
+              </div>
+
+              {/* Service Agents Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Assign Service Agents
+                </label>
+                {loading ? (
+                  <div className="text-gray-400">Loading agents...</div>
+                ) : serviceAgents.length > 0 ? (
+                  <div className="space-y-2 max-h-32 overflow-y-auto bg-slate-700/30 rounded-lg p-3">
+                    {serviceAgents.map((agent) => (
+                      <label key={agent.id} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedServiceAgents.includes(agent.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedServiceAgents([...selectedServiceAgents, agent.id]);
+                            } else {
+                              setSelectedServiceAgents(selectedServiceAgents.filter(id => id !== agent.id));
+                            }
+                          }}
+                          className="rounded border-slate-600 bg-slate-700 text-purple-500"
+                          disabled={creating}
+                        />
+                        <span className="text-sm text-gray-300">{agent.name}</span>
+                        <span className="text-xs text-gray-500">({agent.id})</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm">No service agents found</div>
+                )}
+                <p className="text-sm text-gray-400 mt-2">
+                  Select which service agents this broker will coordinate with
                 </p>
               </div>
 

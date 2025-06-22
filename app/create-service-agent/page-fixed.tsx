@@ -366,7 +366,7 @@ export default function CreateServiceAgentPage() {
             <h3 className="text-white font-medium mb-3">How it Works</h3>
             <ol className="text-gray-300 text-sm space-y-2 list-decimal list-inside">
               <li>Select your service specialization and configure connections</li>
-              <li>Click "Create Service Agent" and provide your Letta API key</li>
+              <li>Click &quot;Create Service Agent&quot; and provide your Letta API key</li>
               <li>The agent will be created directly in your Letta system</li>
               <li>Test the service agent with broker-routed requests</li>
               <li>Monitor offer logging and client response delivery</li>

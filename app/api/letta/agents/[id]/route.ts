@@ -60,7 +60,7 @@ export async function GET(
     
     console.log('\nTools (' + (agent.tools?.length || 0) + ' total):');
     if (agent.tools && agent.tools.length > 0) {
-      agent.tools.forEach((tool, index) => {
+      agent.tools.forEach((tool: string | { name?: string; tool_type?: string; description?: string }, index: number) => {
         if (typeof tool === 'string') {
           console.log(`  ${index + 1}. ${tool} (string)`);
         } else {
@@ -103,6 +103,63 @@ export async function GET(
     console.error('Error fetching Letta agent:', error);
     return NextResponse.json(
       { error: 'Failed to fetch agent from Letta API' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const apiKey = process.env.LETTA_API_KEY;
+    
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Letta API key not configured' },
+        { status: 500 }
+      );
+    }
+
+    const { id: agentId } = await params;
+    
+    console.log('==========================================');
+    console.log('🗑️ AGENT DELETE REQUEST');
+    console.log('==========================================');
+    console.log('Agent ID:', agentId);
+    console.log('Timestamp:', new Date().toISOString());
+    
+    const response = await fetch(`https://api.letta.com/v1/agents/${agentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.log('❌ Agent deletion failed:', response.status, response.statusText);
+      if (response.status === 404) {
+        return NextResponse.json(
+          { error: 'Agent not found' },
+          { status: 404 }
+        );
+      }
+      throw new Error(`Letta API error: ${response.status} ${response.statusText}`);
+    }
+
+    console.log('✅ Agent deleted successfully');
+    console.log('==========================================');
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Agent deleted successfully' 
+    });
+  } catch (error) {
+    console.error('Error deleting Letta agent:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete agent from Letta API' },
       { status: 500 }
     );
   }

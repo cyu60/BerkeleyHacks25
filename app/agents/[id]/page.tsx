@@ -81,6 +81,7 @@ export default function AgentDetailPage() {
   const [showSystemConfig, setShowSystemConfig] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [deletingAgent, setDeletingAgent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -238,6 +239,36 @@ export default function AgentDetailPage() {
     fetchMessages();
   };
 
+  const deleteAgent = async () => {
+    if (
+      !confirm(
+        `Are you sure you want to delete "${agent?.name}"? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingAgent(true);
+    try {
+      const response = await fetch(`/api/letta/agents/${agentId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        // Redirect to agents list after successful deletion
+        window.location.href = "/agents";
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete agent: ${error.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      console.error("Error deleting agent:", err);
+      alert("Failed to delete agent. Please try again.");
+    } finally {
+      setDeletingAgent(false);
+    }
+  };
+
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -341,51 +372,64 @@ export default function AgentDetailPage() {
 
   const getConversationSummary = (agent: LettaAgent): string => {
     return (
-      getCoreMemoryValue(agent, "conversation_summary") || "No conversation summary available"
+      getCoreMemoryValue(agent, "conversation_summary") ||
+      "No conversation summary available"
     );
   };
 
   const getAgreementHistory = (agent: LettaAgent): string => {
     return (
-      getCoreMemoryValue(agent, "agreement_history") || "No agreement history available"
+      getCoreMemoryValue(agent, "agreement_history") ||
+      "No agreement history available"
     );
   };
 
   const getAgentRegistry = (agent: LettaAgent): string => {
     return (
-      getCoreMemoryValue(agent, "agent_registry") || "No agent registry available"
+      getCoreMemoryValue(agent, "agent_registry") ||
+      "No agent registry available"
     );
   };
 
   const formatAgreementHistory = (rawText: string): string => {
-    if (!rawText || rawText === "No agreement history available") return rawText;
-    
-    const lines = rawText.split('\n').filter(line => line.trim());
-    const formattedEntries = lines.map(line => {
+    if (!rawText || rawText === "No agreement history available")
+      return rawText;
+
+    const lines = rawText.split("\n").filter((line) => line.trim());
+    const formattedEntries = lines.map((line) => {
       // Parse format: [#number] | question | service | offer | deadline | status
-      const match = line.match(/^\[#(\d+)\]\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(.+)$/);
+      const match = line.match(
+        /^\[#(\d+)\]\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(.+)$/
+      );
       if (match) {
         const [, number, question, service, offer, deadline, status] = match;
-        const statusIcon = status.trim() === 'APPROVE' ? '✅' : '❌';
-        const deadlineFormatted = deadline.includes('DUE') ? deadline.replace('DUE ', '').trim() : deadline.trim();
-        
+        const statusIcon = status.trim() === "APPROVE" ? "✅" : "❌";
+        const deadlineFormatted = deadline.includes("DUE")
+          ? deadline.replace("DUE ", "").trim()
+          : deadline.trim();
+
         let formattedDeadline = deadlineFormatted;
         try {
-          if (deadlineFormatted.includes('T') && deadlineFormatted.includes('Z')) {
+          if (
+            deadlineFormatted.includes("T") &&
+            deadlineFormatted.includes("Z")
+          ) {
             const date = new Date(deadlineFormatted);
-            formattedDeadline = date.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
+            formattedDeadline = date.toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
             });
           }
         } catch {
           // Keep original if parsing fails
         }
-        
-        return `**#${number.trim()}** ${statusIcon} **${service.trim().toUpperCase()}**
+
+        return `**#${number.trim()}** ${statusIcon} **${service
+          .trim()
+          .toUpperCase()}**
 📝 **Query:** ${question.trim()}
 💼 **Offer:** ${offer.trim()}
 ⏰ **Deadline:** ${formattedDeadline}
@@ -393,25 +437,25 @@ export default function AgentDetailPage() {
       }
       return line.trim();
     });
-    
-    return formattedEntries.join('\n\n');
+
+    return formattedEntries.join("\n\n");
   };
 
   const formatAgentRegistry = (rawText: string): string => {
     if (!rawText || rawText === "No agent registry available") return rawText;
-    
-    const lines = rawText.split('\n').filter(line => line.trim());
-    const formattedLines = lines.map(line => {
-      if (line.startsWith('#')) {
+
+    const lines = rawText.split("\n").filter((line) => line.trim());
+    const formattedLines = lines.map((line) => {
+      if (line.startsWith("#")) {
         return `**${line.trim()}**`;
-      } else if (line.includes(':')) {
-        const [service, description] = line.split(':');
+      } else if (line.includes(":")) {
+        const [service, description] = line.split(":");
         return `🤖 **${service.trim()}:** ${description.trim()}`;
       }
       return line.trim();
     });
-    
-    return formattedLines.join('\n');
+
+    return formattedLines.join("\n");
   };
 
   const formatSessionLog = (rawText: string): string => {
@@ -425,7 +469,7 @@ export default function AgentDetailPage() {
         /^\[(\d+)\]\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(.+)$/
       );
       if (match) {
-        const [, number, service, question, offer, deadline, status] = match;
+        const [, , service, question, offer, deadline, status] = match;
         const statusIcon =
           status.trim() === "APPROVE" ? "✅ APPROVED" : "❌ REJECTED";
         const deadlineFormatted = deadline.includes("DUE")
@@ -536,13 +580,13 @@ export default function AgentDetailPage() {
           /^\[(\d+)\]\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*(.+)$/
         );
         if (match) {
-          const [, number, service, question, offer, deadline, status] = match;
+          const [, , service, question, offer, deadline, status] = match;
           const deadlineFormatted = deadline.includes("DUE")
             ? deadline.replace("DUE ", "").trim()
             : deadline.trim();
 
           return {
-            number: number.trim(),
+            number: match[1].trim(),
             service: service.trim(),
             question: question.trim(),
             offer: offer.trim(),
@@ -553,7 +597,7 @@ export default function AgentDetailPage() {
         }
         return null;
       })
-      .filter(Boolean);
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   };
 
   const getMessageDate = (message: LettaMessage): string => {
@@ -786,9 +830,7 @@ export default function AgentDetailPage() {
                   const additionalBlocks = agent.core_memory
                     .filter(
                       (block) =>
-                        !["persona"].includes(
-                          block.label.toLowerCase()
-                        )
+                        !["persona"].includes(block.label.toLowerCase())
                     )
                     // Remove duplicates based on label
                     .filter(
@@ -960,74 +1002,92 @@ export default function AgentDetailPage() {
             {(() => {
               const agentType = categorizeAgent(agent);
               const agentSpecificBlocks = [];
-              
+
               // Check for real_offer/real_service content
               const realOfferValue = getRealOffer(agent);
-              
-              if (agentType === 'client') {
-                if (realOfferValue && realOfferValue !== 'No service offering defined') {
+
+              if (agentType === "client") {
+                if (
+                  realOfferValue &&
+                  realOfferValue !== "No service offering defined"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Services Received',
+                    label: "Services Received",
                     value: realOfferValue,
-                    id: `${agent.id}-services-received`
+                    id: `${agent.id}-services-received`,
                   });
                 }
-                
+
                 // Add session logs for client agents
                 const sessionLogValue = getSessionLog(agent);
-                if (sessionLogValue && sessionLogValue !== 'No session logs available') {
+                if (
+                  sessionLogValue &&
+                  sessionLogValue !== "No session logs available"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Session Activity',
+                    label: "Session Activity",
                     value: formatSessionLog(sessionLogValue),
-                    id: `${agent.id}-session-activity`
+                    id: `${agent.id}-session-activity`,
                   });
                 }
-              } else if (agentType === 'service') {
+              } else if (agentType === "service") {
                 // Always show service offering section for service agents
                 agentSpecificBlocks.push({
-                  label: 'Service Offering',
-                  value: realOfferValue || 'No service offering defined',
-                  id: `${agent.id}-service-offering`
+                  label: "Service Offering",
+                  value: realOfferValue || "No service offering defined",
+                  id: `${agent.id}-service-offering`,
                 });
-              } else if (agentType === 'broker') {
-                if (realOfferValue && realOfferValue !== 'No service offering defined') {
+              } else if (agentType === "broker") {
+                if (
+                  realOfferValue &&
+                  realOfferValue !== "No service offering defined"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Brokerage Focus',
+                    label: "Brokerage Focus",
                     value: realOfferValue,
-                    id: `${agent.id}-brokerage-focus`
+                    id: `${agent.id}-brokerage-focus`,
                   });
                 }
-                
+
                 // Add conversation summary for broker agents
                 const conversationSummary = getConversationSummary(agent);
-                if (conversationSummary && conversationSummary !== 'No conversation summary available') {
+                if (
+                  conversationSummary &&
+                  conversationSummary !== "No conversation summary available"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Session Processing Overview',
+                    label: "Session Processing Overview",
                     value: conversationSummary,
                     id: `${agent.id}-conversation-summary`,
-                    isBrokerSummary: true
+                    isBrokerSummary: true,
                   });
                 }
-                
+
                 // Add agreement history for broker agents
                 const agreementHistory = getAgreementHistory(agent);
-                if (agreementHistory && agreementHistory !== 'No agreement history available') {
+                if (
+                  agreementHistory &&
+                  agreementHistory !== "No agreement history available"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Agreement History',
+                    label: "Agreement History",
                     value: formatAgreementHistory(agreementHistory),
                     id: `${agent.id}-agreement-history`,
-                    isBrokerSummary: true
+                    isBrokerSummary: true,
                   });
                 }
-                
+
                 // Add agent registry for broker agents
                 const agentRegistry = getAgentRegistry(agent);
-                if (agentRegistry && agentRegistry !== 'No agent registry available') {
+                if (
+                  agentRegistry &&
+                  agentRegistry !== "No agent registry available"
+                ) {
                   agentSpecificBlocks.push({
-                    label: 'Agent Registry',
+                    label: "Agent Registry",
                     value: formatAgentRegistry(agentRegistry),
                     id: `${agent.id}-agent-registry`,
-                    isBrokerSummary: true
+                    isBrokerSummary: true,
                   });
                 }
               }
@@ -1037,29 +1097,49 @@ export default function AgentDetailPage() {
               return (
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 md:col-span-2">
                   <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                    🎯 {agentType.charAt(0).toUpperCase() + agentType.slice(1)} Agent Information
+                    🎯 {agentType.charAt(0).toUpperCase() + agentType.slice(1)}{" "}
+                    Agent Information
                   </h2>
                   <div className="space-y-4">
                     {agentSpecificBlocks.map((block) => (
-                      <div key={block.id} className="bg-slate-700/50 rounded-lg p-4">
+                      <div
+                        key={block.id}
+                        className="bg-slate-700/50 rounded-lg p-4"
+                      >
                         <h3 className="text-cyan-400 font-medium mb-3 flex items-center gap-2">
-                          {block.label === 'Session Processing Overview' && <span>📊</span>}
-                          {block.label === 'Agreement History' && <span>📋</span>}
-                          {block.label === 'Agent Registry' && <span>🗂️</span>}
-                          {!block.isBrokerSummary && block.label === 'Brokerage Focus' && <span>🎯</span>}
+                          {block.label === "Session Processing Overview" && (
+                            <span>📊</span>
+                          )}
+                          {block.label === "Agreement History" && (
+                            <span>📋</span>
+                          )}
+                          {block.label === "Agent Registry" && <span>🗂️</span>}
+                          {!block.isBrokerSummary &&
+                            block.label === "Brokerage Focus" && (
+                              <span>🎯</span>
+                            )}
                           {block.label}
                         </h3>
-                        <div className={`rounded-lg p-4 ${block.isBrokerSummary ? 'bg-purple-900/20 border border-purple-700/30' : 'bg-slate-600/50'}`}>
+                        <div
+                          className={`rounded-lg p-4 ${
+                            block.isBrokerSummary
+                              ? "bg-purple-900/20 border border-purple-700/30"
+                              : "bg-slate-600/50"
+                          }`}
+                        >
                           {block.isBrokerSummary ? (
                             <div className="prose prose-sm prose-invert max-w-none">
-                              <div 
+                              <div
                                 className="text-sm text-gray-200 leading-relaxed"
                                 dangerouslySetInnerHTML={{
                                   __html: block.value
-                                    .replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-300">$1</strong>')
-                                    .replace(/^- /gm, '• ')
-                                    .replace(/^  - /gm, '  ◦ ')
-                                    .replace(/\n/g, '<br>')
+                                    .replace(
+                                      /\*\*(.*?)\*\*/g,
+                                      '<strong class="text-purple-300">$1</strong>'
+                                    )
+                                    .replace(/^- /gm, "• ")
+                                    .replace(/^  - /gm, "  ◦ ")
+                                    .replace(/\n/g, "<br>"),
                                 }}
                               />
                             </div>
@@ -1161,11 +1241,16 @@ export default function AgentDetailPage() {
                     <div className="pt-4">
                       <div className="grid md:grid-cols-3 gap-4">
                         {agent.tools.map((tool, index) => (
-                          <div key={index} className="bg-slate-700/50 rounded-lg p-4">
+                          <div
+                            key={index}
+                            className="bg-slate-700/50 rounded-lg p-4"
+                          >
                             <h3 className="text-white font-medium mb-2">
                               {typeof tool === "string"
                                 ? tool
-                                : tool.name || tool.tool_type || `Tool ${index + 1}`}
+                                : tool.name ||
+                                  tool.tool_type ||
+                                  `Tool ${index + 1}`}
                             </h3>
                             <p className="text-gray-400 text-sm">
                               {typeof tool === "object" && tool.description
@@ -1210,7 +1295,7 @@ export default function AgentDetailPage() {
                 onClick={startConversation}
                 className={`bg-gradient-to-r ${colorScheme} hover:opacity-80 text-white px-6 py-3 rounded-lg transition-opacity`}
               >
-                Start Conversation
+                View Conversation
               </button>
             ) : (
               <button
@@ -1220,6 +1305,17 @@ export default function AgentDetailPage() {
                 Hide Conversation
               </button>
             )}
+            <button
+              onClick={deleteAgent}
+              disabled={deletingAgent}
+              className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                deletingAgent
+                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700 text-white"
+              }`}
+            >
+              {deletingAgent ? "Deleting..." : "Delete Agent"}
+            </button>
           </div>
 
           {/* Conversation Interface */}

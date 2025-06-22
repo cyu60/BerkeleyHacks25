@@ -23,7 +23,7 @@ export default function CreateClientAgentPage() {
   const [clientName, setClientName] = useState("");
   const [selectedBroker, setSelectedBroker] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
-  const [availableServices, setAvailableServices] = useState<string[]>([
+  const [availableServices] = useState<string[]>([
     "travel_assistant",
     "tutor", 
     "med_triage_bot"
@@ -74,7 +74,8 @@ export default function CreateClientAgentPage() {
   const serviceAgents = agents.filter(agent => categorizeAgent(agent) === "service");
 
 
-  const generateSystemPrompt = () => {
+  // Commented out unused function
+  // const generateSystemPrompt = () => {
     const servicesList = availableServices.map(s => `"${s}"`).join(", ");
     
     return `<base_instructions>
@@ -225,7 +226,7 @@ from ServiceAgent:
   "content": "[<session_id>] {real_request}"
 }
 \`\`\``;
-  };
+  // };
 
   const handleCreateAgent = async () => {
     if (!clientName.trim()) {
@@ -398,18 +399,14 @@ from ServiceAgent:
                   Available Services
                 </label>
                 <div className="space-y-2">
-                  {availableServices.map((service, index) => (
+                  {availableServices.map((service) => (
                     <div key={service} className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         id={service}
                         checked={true}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setAvailableServices([...availableServices, service]);
-                          } else {
-                            setAvailableServices(availableServices.filter(s => s !== service));
-                          }
+                        onChange={() => {
+                          // Services are fixed and cannot be changed
                         }}
                         className="w-4 h-4 text-purple-600 bg-slate-700 border-slate-600 rounded focus:ring-purple-500"
                       />
@@ -473,9 +470,9 @@ from ServiceAgent:
             <h3 className="text-white font-medium mb-3">How it Works</h3>
             <ol className="text-gray-300 text-sm space-y-2 list-decimal list-inside">
               <li>Fill out the form with client agent details and connections</li>
-              <li>Click "Create Client Agent" and provide your Letta API key</li>
+              <li>Click &quot;Create Client Agent&quot; and provide your Letta API key</li>
               <li>The agent will be created directly in your Letta system</li>
-              <li>Test the agent with a "new session" request format</li>
+              <li>Test the agent with a &quot;new session&quot; request format</li>
               <li>The agent will coordinate with your selected broker and service agents</li>
             </ol>
           </div>

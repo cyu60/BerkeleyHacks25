@@ -13,71 +13,106 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get API key from environment or body
-    const apiKey = process.env.LETTA_API_KEY || body.apiKey;
+    // Get API key from environment
+    const apiKey = process.env.LETTA_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Letta API key not configured. Set LETTA_API_KEY environment variable or provide apiKey in request." },
+        {
+          error:
+            "Letta API key not configured. Set LETTA_API_KEY environment variable.",
+        },
         { status: 500 }
       );
     }
 
     const client = new LettaClient({ token: apiKey });
 
-    // Fetch all agents to populate available service agents dynamically
-    let availableServiceAgentsText = `travel assistant: [PLACEHOLDER_SERVICE_AGENT_ID]
-tutor: [PLACEHOLDER_SERVICE_AGENT_ID]
-medical triage bot: [PLACEHOLDER_SERVICE_AGENT_ID]
-code assistant: [PLACEHOLDER_SERVICE_AGENT_ID]
-research assistant: [PLACEHOLDER_SERVICE_AGENT_ID]`;
-
-    let clientAgentId = "[PLACEHOLDER_CLIENT_AGENT_ID]";
+    // Build the service agents registry from assigned service agents
+    let availableServiceAgentsText = "";
 
     try {
-      // Get existing agents to populate registry
-      const agents = await client.agents.list();
-      
-      if (agents && agents.length > 0) {
-        const serviceMap: Record<string, string> = {};
-        let foundClientAgent = "";
+      // Get agent details for assigned service agents
+      const serviceAgentDetails = [];
+      for (const agentId of serviceAgentIds) {
+        try {
+          const agent = await client.agents.retrieve(agentId);
+          serviceAgentDetails.push(agent);
+        } catch (error) {
+          console.warn(`Could not retrieve service agent ${agentId}:`, error);
+        }
+      }
 
-        // Categorize agents
-        for (const agent of agents) {
-          const name = agent.name?.toLowerCase() || "";
-          const persona = agent.memory?.persona?.toLowerCase() || "";
-          
-          // Check for service agents
-          if (name.includes("travel") || persona.includes("travel")) {
-            serviceMap["travel assistant"] = agent.id;
-          } else if (name.includes("tutor") || persona.includes("tutor")) {
-            serviceMap["tutor"] = agent.id;
-          } else if (name.includes("med") || name.includes("triage") || persona.includes("medical")) {
-            serviceMap["medical triage bot"] = agent.id;
-          } else if (name.includes("code") || persona.includes("code")) {
-            serviceMap["code assistant"] = agent.id;
-          } else if (name.includes("research") || persona.includes("research")) {
-            serviceMap["research assistant"] = agent.id;
-          }
-          
-          // Check for client agent
-          if (!foundClientAgent && (name.includes("client") || persona.includes("client"))) {
-            foundClientAgent = agent.id;
+      // Get agent details for assigned client agents
+      const clientAgentDetails = [];
+      for (const agentId of clientAgentIds) {
+        try {
+          const agent = await client.agents.retrieve(agentId);
+          clientAgentDetails.push(agent);
+        } catch (error) {
+          console.warn(`Could not retrieve client agent ${agentId}:`, error);
+        }
+      }
+
+      // Build service agent mapping from the agents themselves
+      const serviceLines = [];
+      const requirementLines = [];
+
+      for (const agent of serviceAgentDetails) {
+        const agentName = agent.name || "Unknown Service";
+        const persona =
+          agent.memory?.blocks?.find((block) => block.label === "persona")
+            ?.value || "";
+
+        // Extract service type and requirements from persona if available
+        let serviceRequirements = "";
+        if (persona.toLowerCase().includes("travel")) {
+          serviceRequirements =
+            "Travel assistant requirements: GPS tracks, geo-tagged photos, cost logs, attraction reviews";
+        } else if (persona.toLowerCase().includes("tutor")) {
+          serviceRequirements =
+            "Tutor requirements: exams, homework, lecture notes, mind map";
+        } else if (
+          persona.toLowerCase().includes("medical") ||
+          persona.toLowerCase().includes("triage")
+        ) {
+          serviceRequirements =
+            "Medical triage bot requirements: symptom diary, wearable vitals, anecdote of disease, adherence logs";
+        } else if (persona.toLowerCase().includes("code")) {
+          serviceRequirements =
+            "Code assistant requirements: code snippets, bug reports, documentation, API specs";
+        } else if (persona.toLowerCase().includes("research")) {
+          serviceRequirements =
+            "Research assistant requirements: research papers, datasets, reports, survey data";
+        } else if (
+          persona.includes("requirements:") ||
+          persona.includes("accepts:")
+        ) {
+          // Try to extract requirements from persona text
+          const reqMatch = persona.match(
+            /(?:requirements|accepts):\s*([^.\n]+)/i
+          );
+          if (reqMatch) {
+            serviceRequirements = `${agentName} requirements: ${reqMatch[1].trim()}`;
           }
         }
 
-        // Build the service agents text
-        const serviceLines = [];
-        serviceLines.push(`travel assistant: [${serviceMap["travel assistant"] || "PLACEHOLDER_SERVICE_AGENT_ID"}]`);
-        serviceLines.push(`tutor: [${serviceMap["tutor"] || "PLACEHOLDER_SERVICE_AGENT_ID"}]`);
-        serviceLines.push(`medical triage bot: [${serviceMap["medical triage bot"] || "PLACEHOLDER_SERVICE_AGENT_ID"}]`);
-        serviceLines.push(`code assistant: [${serviceMap["code assistant"] || "PLACEHOLDER_SERVICE_AGENT_ID"}]`);
-        serviceLines.push(`research assistant: [${serviceMap["research assistant"] || "PLACEHOLDER_SERVICE_AGENT_ID"}]`);
-        
-        availableServiceAgentsText = serviceLines.join('\n');
-        clientAgentId = foundClientAgent || "[PLACEHOLDER_CLIENT_AGENT_ID]";
+        // Add service agent entry
+        serviceLines.push(`${agentName}: [${agent.id}]`);
+
+        // Add requirements if found
+        if (serviceRequirements) {
+          requirementLines.push(serviceRequirements);
+        }
+      }
+
+      availableServiceAgentsText = serviceLines.join("\n");
+
+      if (requirementLines.length > 0) {
+        availableServiceAgentsText += `\n\n${requirementLines.join("\n\n")}`;
       }
     } catch (error) {
-      console.log("Could not fetch existing agents for registry, using placeholders:", error);
+      console.log("Error fetching assigned agents, using defaults:", error);
+      availableServiceAgentsText = "No service agents assigned yet.";
     }
 
     // Create the broker agent configuration based on working broker2 template
@@ -98,7 +133,7 @@ research assistant: [PLACEHOLDER_SERVICE_AGENT_ID]`;
         max_tokens: 8192,
         enable_reasoner: false,
         reasoning_effort: null,
-        max_reasoning_tokens: 0
+        max_reasoning_tokens: 0,
       },
       embedding_config: {
         embedding_endpoint_type: "openai",
@@ -109,39 +144,45 @@ research assistant: [PLACEHOLDER_SERVICE_AGENT_ID]`;
         handle: "openai/text-embedding-3-small",
         azure_endpoint: null,
         azure_version: null,
-        azure_deployment: null
+        azure_deployment: null,
       },
       tool_rules: [
         {
           tool_name: "archival_memory_search",
           type: "continue_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>"
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>",
         },
         {
           tool_name: "core_memory_replace",
           type: "continue_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>"
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>",
         },
         {
           tool_name: "send_message",
           type: "exit_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} ends the conversation when called</tool_constraint>"
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} ends the conversation when called</tool_constraint>",
         },
         {
           tool_name: "archival_memory_insert",
           type: "continue_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>"
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>",
         },
         {
           tool_name: "conversation_search",
           type: "continue_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>"
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>",
         },
         {
           tool_name: "core_memory_append",
           type: "continue_loop",
-          prompt_template: "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>"
-        }
+          prompt_template:
+            "<tool_constraint>{{ tool_name }} requires continuing the conversation when called</tool_constraint>",
+        },
       ],
       system: `<base_instructions>
 You are Letta, the latest version of Limnal Corporation's digital companion, developed in 2025.
@@ -286,7 +327,7 @@ You will also relate the real offer to the service agent.
    }`,
       tools: [
         "send_message_to_agent_async",
-        "log_agreement", 
+        "log_agreement",
         "core_memory_append",
         "send_message",
         "archival_memory_insert",
@@ -295,67 +336,106 @@ You will also relate the real offer to the service agent.
         "archival_memory_search",
         "conversation_search",
         "core_memory_replace",
-        "web_search"
+        "web_search",
       ],
-      memory: {
-        blocks: [
-          {
-            label: "persona",
-            description: "The persona block: Stores details about your current persona, guiding how you behave and respond. This helps you to maintain consistency and personality in your interactions.",
-            limit: 5000,
-            value: `This is my section of core memory devoted to information myself.
+    };
+
+    // Create memory blocks first
+    const personaBlock = await client.blocks.create({
+      label: "persona",
+      value: `This is my section of core memory devoted to information myself.
 There's nothing here yet.
 I should update this memory over time as I develop my personality.
 # persona block
 I am an intelligence broker ("space police").  
 I evaluate proposed value exchanges, approve/reject them, and enforce agreements.
-I will receive and send messages to ClientAgent whose agent id is ${clientAgentId}
-I will send messages to ServiceAgent whose id is determined by which service is requested: Very importantly, According to the service requested, the service agent ID would be different.`
-          },
-          {
-            label: "available_service_agents",
-            description: "The service agents available.",
-            limit: 5000,
-            value: `${availableServiceAgentsText}
+I will receive and send messages to ClientAgent whose agent id is ${
+        clientAgentIds.length > 0 ? clientAgentIds[0] : "NOT_ASSIGNED"
+      }
+I will send messages to ServiceAgent whose id is determined by which service is requested: Very importantly, According to the service requested, the service agent ID would be different.`,
+    });
 
-Medical triage bot requirements: symptom diary, wearable vitals, anecdote of disease, adherence logs
-Tutor requirements: exams, homework, lecture notes, mind map
-Travel assistant requirements: GPS tracks, geo-tagged photos, cost logs, attraction reviews
-Code assistant requirements: code snippets, bug reports, documentation, API specs
-Research assistant requirements: research papers, datasets, reports, survey data`
-          },
-          {
-            label: "conversation_summary",
-            description: "Summary of conversation history and session status",
-            limit: 5000,
-            value: `New broker agent initialized and ready to coordinate agent interactions.
+    const serviceAgentsBlock = await client.blocks.create({
+      label: "available_service_agents",
+      value: availableServiceAgentsText,
+    });
+
+    const summaryBlock = await client.blocks.create({
+      label: "conversation_summary",
+      value: `New broker agent initialized and ready to coordinate agent interactions.
+
+**Agent Assignment Summary:**
+- Assigned Client Agents: ${clientAgentIds.length} agents
+- Assigned Service Agents: ${serviceAgentIds.length} agents
 
 **System Observations:**
-- Ready to receive structured requests from ClientAgent
-- Prepared to coordinate with specialized service agents
+- Ready to receive structured requests from assigned client agents
+- Prepared to coordinate with assigned specialized service agents
 - Agreement logging and validation system operational
 
 **Critical Functions:**
 - Value exchange evaluation and approval
 - Inter-agent communication coordination
-- Service requirement validation`
-          },
-          {
-            label: "agreement_history", 
-            description: "Log of all session requests and their status",
-            limit: 5000,
-            value: "Agreement history initialized. Format: [#session_id] | request | service | offer | DUE deadline | APPROVE/REJECT"
-          }
-        ]
-      },
+- Service requirement validation`,
+    });
+
+    const historyBlock = await client.blocks.create({
+      label: "agreement_history",
+      value:
+        "Agreement history initialized. Format: [#session_id] | request | service | offer | DUE deadline | APPROVE/REJECT",
+    });
+
+    // Add block IDs to agent config
+    const agentConfigWithBlocks = {
+      ...agentConfig,
+      blockIds: [
+        personaBlock.id,
+        serviceAgentsBlock.id,
+        summaryBlock.id,
+        historyBlock.id,
+      ].filter((id): id is string => id !== undefined),
     };
 
     console.log(
       "Creating broker agent with config:",
-      JSON.stringify(agentConfig, null, 2)
+      JSON.stringify(agentConfigWithBlocks, null, 2)
     );
 
-    const newAgent = await client.agents.create(agentConfig);
+    const newAgent = await client.agents.create(agentConfigWithBlocks);
+
+    console.log("Created agent response:", JSON.stringify(newAgent, null, 2));
+
+    // Verify memory blocks were created
+    interface AgentWithBlocks {
+      blockIds?: string[];
+      [key: string]: unknown;
+    }
+
+    const agentWithBlocks = newAgent as unknown as AgentWithBlocks;
+    if (agentWithBlocks.blockIds && agentWithBlocks.blockIds.length > 0) {
+      console.log(
+        "Memory blocks attached successfully:",
+        agentWithBlocks.blockIds.length
+      );
+      console.log("Block IDs:", agentWithBlocks.blockIds);
+
+      // Optionally fetch block details to verify
+      for (const blockId of agentWithBlocks.blockIds) {
+        try {
+          const block = await client.blocks.retrieve(blockId);
+          console.log(
+            `Block ${block.label}: ${
+              block.value ? block.value.substring(0, 50) + "..." : "No value"
+            }`
+          );
+        } catch (error) {
+          console.warn(`Could not retrieve block ${blockId}:`, error);
+        }
+      }
+    } else {
+      console.warn("Memory blocks not found in created agent response");
+      console.log("Agent response structure:", Object.keys(newAgent));
+    }
 
     console.log("Successfully created broker agent:", newAgent.id);
 
