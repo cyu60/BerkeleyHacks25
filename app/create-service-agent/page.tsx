@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 
 interface LettaAgent {
@@ -22,11 +23,12 @@ interface ServiceSpecialization {
 }
 
 export default function CreateServiceAgentPage() {
+  const router = useRouter();
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Form state
   const [serviceName, setServiceName] = useState("");
   const [selectedBroker, setSelectedBroker] = useState("");
@@ -36,39 +38,51 @@ export default function CreateServiceAgentPage() {
   const serviceSpecializations: ServiceSpecialization[] = [
     {
       name: "travel_assistant",
-      description: "Provides travel planning, destination information, and itinerary assistance",
-      acceptedDataTypes: "GPS tracks, geo-tagged photos, cost logs, attraction reviews, travel itineraries, location data",
-      capabilities: "Route planning, destination recommendations, travel cost analysis, activity suggestions, local insights",
-      icon: "✈️"
+      description:
+        "Provides travel planning, destination information, and itinerary assistance",
+      acceptedDataTypes:
+        "GPS tracks, geo-tagged photos, cost logs, attraction reviews, travel itineraries, location data",
+      capabilities:
+        "Route planning, destination recommendations, travel cost analysis, activity suggestions, local insights",
+      icon: "✈️",
     },
     {
-      name: "tutor", 
-      description: "Educational assistance and academic support across various subjects",
-      acceptedDataTypes: "Exams, homework, lecture notes, mind maps, study materials, academic papers, problem sets",
-      capabilities: "Subject tutoring, homework help, study plan creation, concept explanation, exam preparation",
-      icon: "📚"
+      name: "tutor",
+      description:
+        "Educational assistance and academic support across various subjects",
+      acceptedDataTypes:
+        "Exams, homework, lecture notes, mind maps, study materials, academic papers, problem sets",
+      capabilities:
+        "Subject tutoring, homework help, study plan creation, concept explanation, exam preparation",
+      icon: "📚",
     },
     {
       name: "med_triage_bot",
-      description: "Medical information and health monitoring assistance", 
-      acceptedDataTypes: "Symptom diary, wearable vitals, health logs, medical history, medication schedules",
-      capabilities: "Symptom analysis, health monitoring, medication reminders, wellness tracking, medical information",
-      icon: "🏥"
+      description: "Medical information and health monitoring assistance",
+      acceptedDataTypes:
+        "Symptom diary, wearable vitals, health logs, medical history, medication schedules",
+      capabilities:
+        "Symptom analysis, health monitoring, medication reminders, wellness tracking, medical information",
+      icon: "🏥",
     },
     {
       name: "code_assistant",
       description: "Software development and programming assistance",
-      acceptedDataTypes: "Code snippets, bug reports, documentation, API specs, test cases, project files",
-      capabilities: "Code review, debugging assistance, documentation generation, best practices guidance, architecture advice",
-      icon: "💻"
+      acceptedDataTypes:
+        "Code snippets, bug reports, documentation, API specs, test cases, project files",
+      capabilities:
+        "Code review, debugging assistance, documentation generation, best practices guidance, architecture advice",
+      icon: "💻",
     },
     {
-      name: "research_assistant", 
+      name: "research_assistant",
       description: "Research and data analysis support",
-      acceptedDataTypes: "Research papers, datasets, reports, survey data, academic sources, citation lists",
-      capabilities: "Literature review, data analysis, research methodology, citation formatting, report writing",
-      icon: "🔬"
-    }
+      acceptedDataTypes:
+        "Research papers, datasets, reports, survey data, academic sources, citation lists",
+      capabilities:
+        "Literature review, data analysis, research methodology, citation formatting, report writing",
+      icon: "🔬",
+    },
   ];
 
   useEffect(() => {
@@ -113,9 +127,12 @@ export default function CreateServiceAgentPage() {
     return "other";
   };
 
-  const brokerAgents = agents.filter(agent => categorizeAgent(agent) === "broker");
-  const clientAgents = agents.filter(agent => categorizeAgent(agent) === "client");
-
+  const brokerAgents = agents.filter(
+    (agent) => categorizeAgent(agent) === "broker"
+  );
+  const clientAgents = agents.filter(
+    (agent) => categorizeAgent(agent) === "client"
+  );
 
   const handleCreateAgent = async () => {
     if (!serviceName.trim()) {
@@ -135,48 +152,34 @@ export default function CreateServiceAgentPage() {
       return;
     }
 
-    const apiKey = prompt("Please enter your Letta API key:");
-    if (!apiKey?.trim()) {
-      setError("API key is required to create the agent");
-      return;
-    }
-
     setCreating(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/letta/agents/create-service', {
-        method: 'POST',
+      const response = await fetch("/api/letta/agents/create-service", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: serviceName,
           serviceType: selectedSpecialization,
           brokerAgentId: selectedBroker,
-          apiKey: apiKey
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to create service agent');
+        throw new Error(result.error || "Failed to create service agent");
       }
 
-      alert(`✅ Success! Service agent "${serviceName}" (${selectedSpecialization}) has been created with ID: ${result.agent.id}`);
-      
-      // Reset form
-      setServiceName("");
-      setSelectedBroker("");
-      setSelectedClients([]);
-      setSelectedSpecialization("");
-      
-      // Refresh agents list
-      fetchAgents();
-      
+      // Redirect to the newly created agent's page
+      router.push(`/agents/${result.agent.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create service agent");
+      setError(
+        err instanceof Error ? err.message : "Failed to create service agent"
+      );
     } finally {
       setCreating(false);
     }
@@ -210,12 +213,19 @@ export default function CreateServiceAgentPage() {
               Create Service Agent
             </h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Generate a new specialized service agent configuration with broker and client connections
+              Generate a new specialized service agent configuration with broker
+              and client connections
             </p>
           </div>
 
           <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
-            <form onSubmit={(e) => { e.preventDefault(); handleCreateAgent(); }} className="space-y-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateAgent();
+              }}
+              className="space-y-6"
+            >
               {/* Service Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -242,18 +252,27 @@ export default function CreateServiceAgentPage() {
                       key={spec.name}
                       className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                         selectedSpecialization === spec.name
-                          ? 'border-cyan-500 bg-cyan-500/10'
-                          : 'border-slate-600 bg-slate-700/50 hover:border-slate-500'
+                          ? "border-cyan-500 bg-cyan-500/10"
+                          : "border-slate-600 bg-slate-700/50 hover:border-slate-500"
                       }`}
                       onClick={() => setSelectedSpecialization(spec.name)}
                     >
                       <div className="flex items-start gap-3">
                         <span className="text-2xl">{spec.icon}</span>
                         <div className="flex-1">
-                          <h3 className="text-white font-medium mb-1">{spec.name}</h3>
-                          <p className="text-gray-400 text-sm mb-2">{spec.description}</p>
+                          <h3 className="text-white font-medium mb-1">
+                            {spec.name}
+                          </h3>
+                          <p className="text-gray-400 text-sm mb-2">
+                            {spec.description}
+                          </p>
                           <p className="text-xs text-gray-500">
-                            <span className="font-medium">Accepts:</span> {spec.acceptedDataTypes.split(',').slice(0, 3).join(', ')}...
+                            <span className="font-medium">Accepts:</span>{" "}
+                            {spec.acceptedDataTypes
+                              .split(",")
+                              .slice(0, 3)
+                              .join(", ")}
+                            ...
                           </p>
                         </div>
                       </div>
@@ -301,20 +320,28 @@ export default function CreateServiceAgentPage() {
                           if (e.target.checked) {
                             setSelectedClients([...selectedClients, agent.id]);
                           } else {
-                            setSelectedClients(selectedClients.filter(id => id !== agent.id));
+                            setSelectedClients(
+                              selectedClients.filter((id) => id !== agent.id)
+                            );
                           }
                         }}
                         className="w-4 h-4 text-cyan-600 bg-slate-700 border-slate-600 rounded focus:ring-cyan-500"
                       />
-                      <label htmlFor={agent.id} className="text-gray-300 text-sm flex-1">
+                      <label
+                        htmlFor={agent.id}
+                        className="text-gray-300 text-sm flex-1"
+                      >
                         <span className="font-medium">{agent.name}</span>
-                        <span className="text-gray-400 block text-xs">{agent.id}</span>
+                        <span className="text-gray-400 block text-xs">
+                          {agent.id}
+                        </span>
                       </label>
                     </div>
                   ))}
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
-                  {selectedClients.length} of {clientAgents.length} client agents selected
+                  {selectedClients.length} of {clientAgents.length} client
+                  agents selected
                 </p>
               </div>
 
@@ -325,35 +352,72 @@ export default function CreateServiceAgentPage() {
               )}
 
               {/* Preview */}
-              {serviceName && selectedBroker && selectedClients.length > 0 && selectedSpecialization && (
-                <div className="bg-slate-700/50 rounded-lg p-4">
-                  <h3 className="text-white font-medium mb-2">Configuration Preview</h3>
-                  <div className="text-sm text-gray-300 space-y-1">
-                    <p><span className="text-cyan-400">Name:</span> {serviceName}</p>
-                    <p><span className="text-purple-400">Broker:</span> {brokerAgents.find(a => a.id === selectedBroker)?.name} ({selectedBroker})</p>
-                    <p><span className="text-teal-400">Specialization:</span> {selectedSpecialization} {serviceSpecializations.find(s => s.name === selectedSpecialization)?.icon}</p>
-                    <div>
-                      <span className="text-green-400">Client Agents ({selectedClients.length}):</span>
-                      <ul className="ml-4 mt-1 space-y-1">
-                        {selectedClients.map(clientId => {
-                          const agent = clientAgents.find(a => a.id === clientId);
-                          return (
-                            <li key={clientId} className="text-xs">
-                              • {agent?.name} ({clientId})
-                            </li>
-                          );
-                        })}
-                      </ul>
+              {serviceName &&
+                selectedBroker &&
+                selectedClients.length > 0 &&
+                selectedSpecialization && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <h3 className="text-white font-medium mb-2">
+                      Configuration Preview
+                    </h3>
+                    <div className="text-sm text-gray-300 space-y-1">
+                      <p>
+                        <span className="text-cyan-400">Name:</span>{" "}
+                        {serviceName}
+                      </p>
+                      <p>
+                        <span className="text-purple-400">Broker:</span>{" "}
+                        {
+                          brokerAgents.find((a) => a.id === selectedBroker)
+                            ?.name
+                        }{" "}
+                        ({selectedBroker})
+                      </p>
+                      <p>
+                        <span className="text-teal-400">Specialization:</span>{" "}
+                        {selectedSpecialization}{" "}
+                        {
+                          serviceSpecializations.find(
+                            (s) => s.name === selectedSpecialization
+                          )?.icon
+                        }
+                      </p>
+                      <div>
+                        <span className="text-green-400">
+                          Client Agents ({selectedClients.length}):
+                        </span>
+                        <ul className="ml-4 mt-1 space-y-1">
+                          {selectedClients.map((clientId) => {
+                            const agent = clientAgents.find(
+                              (a) => a.id === clientId
+                            );
+                            return (
+                              <li key={clientId} className="text-xs">
+                                • {agent?.name} ({clientId})
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <button
                 type="submit"
-                disabled={creating || !serviceName || !selectedBroker || selectedClients.length === 0 || !selectedSpecialization}
+                disabled={
+                  creating ||
+                  !serviceName ||
+                  !selectedBroker ||
+                  selectedClients.length === 0 ||
+                  !selectedSpecialization
+                }
                 className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
-                  creating || !serviceName || !selectedBroker || selectedClients.length === 0 || !selectedSpecialization
+                  creating ||
+                  !serviceName ||
+                  !selectedBroker ||
+                  selectedClients.length === 0 ||
+                  !selectedSpecialization
                     ? "bg-slate-600 text-gray-400 cursor-not-allowed"
                     : "bg-gradient-to-r from-cyan-600 to-teal-600 text-white hover:opacity-80"
                 }`}
@@ -366,8 +430,12 @@ export default function CreateServiceAgentPage() {
           <div className="mt-8 bg-slate-800/30 rounded-lg p-6">
             <h3 className="text-white font-medium mb-3">How it Works</h3>
             <ol className="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-              <li>Select your service specialization and configure connections</li>
-              <li>Click "Create Service Agent" and provide your Letta API key</li>
+              <li>
+                Select your service specialization and configure connections
+              </li>
+              <li>
+                Click &quot;Create Service Agent&quot; to create the agent
+              </li>
               <li>The agent will be created directly in your Letta system</li>
               <li>Test the service agent with broker-routed requests</li>
               <li>Monitor offer logging and client response delivery</li>

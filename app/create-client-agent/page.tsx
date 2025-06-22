@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 
 interface LettaAgent {
@@ -14,19 +15,20 @@ interface LettaAgent {
 }
 
 export default function CreateClientAgentPage() {
+  const router = useRouter();
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Form state
   const [clientName, setClientName] = useState("");
   const [selectedBroker, setSelectedBroker] = useState("");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [availableServices] = useState<string[]>([
     "travel_assistant",
-    "tutor", 
-    "med_triage_bot"
+    "tutor",
+    "med_triage_bot",
   ]);
 
   useEffect(() => {
@@ -70,8 +72,12 @@ export default function CreateClientAgentPage() {
     return "other";
   };
 
-  const brokerAgents = agents.filter(agent => categorizeAgent(agent) === "broker");
-  const serviceAgents = agents.filter(agent => categorizeAgent(agent) === "service");
+  const brokerAgents = agents.filter(
+    (agent) => categorizeAgent(agent) === "broker"
+  );
+  const serviceAgents = agents.filter(
+    (agent) => categorizeAgent(agent) === "service"
+  );
 
   const handleCreateAgent = async () => {
     if (!clientName.trim()) {
@@ -87,47 +93,34 @@ export default function CreateClientAgentPage() {
       return;
     }
 
-    const apiKey = prompt("Please enter your Letta API key:");
-    if (!apiKey?.trim()) {
-      setError("API key is required to create the agent");
-      return;
-    }
-
     setCreating(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/letta/agents/create-client', {
-        method: 'POST',
+      const response = await fetch("/api/letta/agents/create-client", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: clientName,
           brokerAgentId: selectedBroker,
           serviceAgentIds: selectedServices,
-          apiKey: apiKey
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to create client agent');
+        throw new Error(result.error || "Failed to create client agent");
       }
 
-      alert(`✅ Success! Client agent "${clientName}" has been created with ID: ${result.agent.id}`);
-      
-      // Reset form
-      setClientName("");
-      setSelectedBroker("");
-      setSelectedServices([]);
-      
-      // Refresh agents list
-      fetchAgents();
-      
+      // Redirect to the newly created agent's page
+      router.push(`/agents/${result.agent.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create client agent");
+      setError(
+        err instanceof Error ? err.message : "Failed to create client agent"
+      );
     } finally {
       setCreating(false);
     }
@@ -161,12 +154,19 @@ export default function CreateClientAgentPage() {
               Create Client Agent
             </h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Generate a new client agent configuration with selected broker and service agent connections
+              Generate a new client agent configuration with selected broker and
+              service agent connections
             </p>
           </div>
 
           <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
-            <form onSubmit={(e) => { e.preventDefault(); handleCreateAgent(); }} className="space-y-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateAgent();
+              }}
+              className="space-y-6"
+            >
               {/* Client Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -219,22 +219,33 @@ export default function CreateClientAgentPage() {
                         checked={selectedServices.includes(agent.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedServices([...selectedServices, agent.id]);
+                            setSelectedServices([
+                              ...selectedServices,
+                              agent.id,
+                            ]);
                           } else {
-                            setSelectedServices(selectedServices.filter(id => id !== agent.id));
+                            setSelectedServices(
+                              selectedServices.filter((id) => id !== agent.id)
+                            );
                           }
                         }}
                         className="w-4 h-4 text-purple-600 bg-slate-700 border-slate-600 rounded focus:ring-purple-500"
                       />
-                      <label htmlFor={agent.id} className="text-gray-300 text-sm flex-1">
+                      <label
+                        htmlFor={agent.id}
+                        className="text-gray-300 text-sm flex-1"
+                      >
                         <span className="font-medium">{agent.name}</span>
-                        <span className="text-gray-400 block text-xs">{agent.id}</span>
+                        <span className="text-gray-400 block text-xs">
+                          {agent.id}
+                        </span>
                       </label>
                     </div>
                   ))}
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
-                  {selectedServices.length} of {serviceAgents.length} service agents selected
+                  {selectedServices.length} of {serviceAgents.length} service
+                  agents selected
                 </p>
               </div>
 
@@ -273,15 +284,27 @@ export default function CreateClientAgentPage() {
               {/* Preview */}
               {clientName && selectedBroker && selectedServices.length > 0 && (
                 <div className="bg-slate-700/50 rounded-lg p-4">
-                  <h3 className="text-white font-medium mb-2">Configuration Preview</h3>
+                  <h3 className="text-white font-medium mb-2">
+                    Configuration Preview
+                  </h3>
                   <div className="text-sm text-gray-300 space-y-1">
-                    <p><span className="text-cyan-400">Name:</span> {clientName}</p>
-                    <p><span className="text-purple-400">Broker:</span> {brokerAgents.find(a => a.id === selectedBroker)?.name} ({selectedBroker})</p>
+                    <p>
+                      <span className="text-cyan-400">Name:</span> {clientName}
+                    </p>
+                    <p>
+                      <span className="text-purple-400">Broker:</span>{" "}
+                      {brokerAgents.find((a) => a.id === selectedBroker)?.name}{" "}
+                      ({selectedBroker})
+                    </p>
                     <div>
-                      <span className="text-green-400">Service Agents ({selectedServices.length}):</span>
+                      <span className="text-green-400">
+                        Service Agents ({selectedServices.length}):
+                      </span>
                       <ul className="ml-4 mt-1 space-y-1">
-                        {selectedServices.map(serviceId => {
-                          const agent = serviceAgents.find(a => a.id === serviceId);
+                        {selectedServices.map((serviceId) => {
+                          const agent = serviceAgents.find(
+                            (a) => a.id === serviceId
+                          );
                           return (
                             <li key={serviceId} className="text-xs">
                               • {agent?.name} ({serviceId})
@@ -290,16 +313,29 @@ export default function CreateClientAgentPage() {
                         })}
                       </ul>
                     </div>
-                    <p><span className="text-yellow-400">Available Services:</span> {availableServices.join(", ")}</p>
+                    <p>
+                      <span className="text-yellow-400">
+                        Available Services:
+                      </span>{" "}
+                      {availableServices.join(", ")}
+                    </p>
                   </div>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={creating || !clientName || !selectedBroker || selectedServices.length === 0}
+                disabled={
+                  creating ||
+                  !clientName ||
+                  !selectedBroker ||
+                  selectedServices.length === 0
+                }
                 className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
-                  creating || !clientName || !selectedBroker || selectedServices.length === 0
+                  creating ||
+                  !clientName ||
+                  !selectedBroker ||
+                  selectedServices.length === 0
                     ? "bg-slate-600 text-gray-400 cursor-not-allowed"
                     : "bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-80"
                 }`}
@@ -312,11 +348,18 @@ export default function CreateClientAgentPage() {
           <div className="mt-8 bg-slate-800/30 rounded-lg p-6">
             <h3 className="text-white font-medium mb-3">How it Works</h3>
             <ol className="text-gray-300 text-sm space-y-2 list-decimal list-inside">
-              <li>Fill out the form with client agent details and connections</li>
-              <li>Click &quot;Create Client Agent&quot; and provide your Letta API key</li>
+              <li>
+                Fill out the form with client agent details and connections
+              </li>
+              <li>Click &quot;Create Client Agent&quot; to create the agent</li>
               <li>The agent will be created directly in your Letta system</li>
-              <li>Test the agent with a &quot;new session&quot; request format</li>
-              <li>The agent will coordinate with your selected broker and service agents</li>
+              <li>
+                Test the agent with a &quot;new session&quot; request format
+              </li>
+              <li>
+                The agent will coordinate with your selected broker and service
+                agents
+              </li>
             </ol>
           </div>
         </div>

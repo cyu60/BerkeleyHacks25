@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function CreateBrokerAgentPage() {
+  const router = useRouter();
   const [brokerName, setBrokerName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,28 +19,40 @@ export default function CreateBrokerAgentPage() {
       return;
     }
 
+    // Check if LETTA_API_KEY is not set in environment, then prompt for it
+    const needsApiKey = !process.env.LETTA_API_KEY;
+    let apiKey = null;
+    
+    if (needsApiKey) {
+      apiKey = prompt("Please enter your Letta API key:");
+      if (!apiKey?.trim()) {
+        setError("API key is required to create the agent");
+        return;
+      }
+    }
+
     setCreating(true);
     setError(null);
-    setSuccess(null);
 
     try {
+      const requestBody: any = { name: brokerName };
+      if (apiKey) {
+        requestBody.apiKey = apiKey;
+      }
+
       const response = await fetch("/api/letta/agents/create-broker", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          name: brokerName,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
 
       if (response.ok) {
-        setSuccess(
-          `Broker agent "${brokerName}" created successfully! Agent ID: ${result.agent.id}`
-        );
-        setBrokerName("");
+        // Redirect to the newly created agent's page
+        router.push(`/agents/${result.agent.id}`);
       } else {
         setError(result.error || "Failed to create broker agent");
       }
@@ -102,12 +115,6 @@ export default function CreateBrokerAgentPage() {
               {error && (
                 <div className="p-4 bg-red-900/30 border border-red-700/50 rounded-lg">
                   <p className="text-red-300 text-sm">{error}</p>
-                </div>
-              )}
-
-              {success && (
-                <div className="p-4 bg-green-900/30 border border-green-700/50 rounded-lg">
-                  <p className="text-green-300 text-sm">{success}</p>
                 </div>
               )}
 
