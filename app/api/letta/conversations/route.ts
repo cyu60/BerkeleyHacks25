@@ -163,6 +163,11 @@ export async function GET(request: NextRequest) {
         return false;
       }
 
+      // Skip heartbeat messages
+      if (message.content?.includes('"type": "heartbeat"')) {
+        return false;
+      }
+
       // Get timestamp from any available field
       const timestamp = message.created_at || message.date || message.timestamp;
       if (!timestamp) {

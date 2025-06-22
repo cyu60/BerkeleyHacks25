@@ -653,15 +653,39 @@ export default function ConversationsPage() {
                       </span>
                     </div>
                     <p className="text-sm text-gray-400 mt-1">
-                      {conversation.messages.length} messages across{" "}
                       {
-                        new Set(conversation.messages.map((m) => m.agent.id))
-                          .size
+                        conversation.messages.filter((m) => {
+                          const isHeartbeat = m.message.content?.includes(
+                            '"type": "heartbeat"'
+                          );
+                          return !isHeartbeat;
+                        }).length
+                      }{" "}
+                      messages across{" "}
+                      {
+                        new Set(
+                          conversation.messages
+                            .filter((m) => {
+                              const isHeartbeat = m.message.content?.includes(
+                                '"type": "heartbeat"'
+                              );
+                              return !isHeartbeat;
+                            })
+                            .map((m) => m.agent.id)
+                        ).size
                       }{" "}
                       agents
                       {/* Debug: Show agent type distribution */}
                       {(() => {
-                        const agentTypes = conversation.messages.reduce(
+                        const nonHeartbeatMessages = conversation.messages.filter(
+                          (m) => {
+                            const isHeartbeat = m.message.content?.includes(
+                              '"type": "heartbeat"'
+                            );
+                            return !isHeartbeat;
+                          }
+                        );
+                        const agentTypes = nonHeartbeatMessages.reduce(
                           (acc, m) => {
                             const type = categorizeAgent(m.agent);
                             acc[type] = (acc[type] || 0) + 1;
@@ -686,15 +710,20 @@ export default function ConversationsPage() {
                   {/* Message Flow */}
                   <div className="p-6">
                     <div className="space-y-4">
-                      {conversation.messages.map((item, msgIndex) => {
+                      {conversation.messages
+                        .filter((item) => {
+                          // Hide heartbeat messages
+                          const isHeartbeat = item.message.content?.includes(
+                            '"type": "heartbeat"'
+                          );
+                          return !isHeartbeat;
+                        })
+                        .map((item, msgIndex) => {
                         const agentType = categorizeAgent(item.agent);
                         const colors = getAgentTypeColor(agentType);
 
                         const messageContent = getMessageContent(item.message);
                         const messageIcon = getMessageIcon(item.message);
-                        const isHeartbeat = item.message.content?.includes(
-                          '"type": "heartbeat"'
-                        );
                         const isToolMessage =
                           item.message.message_type === "tool_call_message" ||
                           item.message.message_type === "tool_return_message";
@@ -702,9 +731,7 @@ export default function ConversationsPage() {
                         return (
                           <div
                             key={msgIndex}
-                            className={`flex items-start gap-4 ${
-                              isHeartbeat ? "opacity-60" : ""
-                            }`}
+                            className="flex items-start gap-4"
                           >
                             {/* Sequence Number */}
                             <div className="flex-shrink-0 w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
@@ -731,18 +758,11 @@ export default function ConversationsPage() {
                                   {messageIcon}{" "}
                                   {item.message.message_type.replace("_", " ")}
                                 </span>
-                                {isHeartbeat && (
-                                  <span className="text-xs text-gray-600 bg-slate-800 px-2 py-1 rounded">
-                                    System
-                                  </span>
-                                )}
                               </div>
 
                               <div
                                 className={`rounded-lg p-4 border ${
-                                  isHeartbeat
-                                    ? "bg-slate-800/30 border-slate-600/50"
-                                    : isToolMessage
+                                  isToolMessage
                                     ? "bg-blue-900/20 border-blue-700/50"
                                     : `bg-slate-700/50 ${colors.border}`
                                 }`}
