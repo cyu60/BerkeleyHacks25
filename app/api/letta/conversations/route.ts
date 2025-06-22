@@ -30,6 +30,7 @@ interface LettaMessage {
   tool_return?: string;
   created_at?: string;
   date?: string;
+  timestamp?: string;
 }
 
 interface ConversationFlow {
@@ -143,7 +144,7 @@ export async function GET(request: NextRequest) {
           allMessages.push({
             agent: agentData,
             message: {
-              ...(msg as Record<string, unknown>),
+              ...(msg as unknown as LettaMessage),
               agent_id: agent.id,
             } as LettaMessage,
           });
@@ -163,15 +164,12 @@ export async function GET(request: NextRequest) {
       }
 
       // Get timestamp from any available field
-      const timestamp =
-        (message as Record<string, unknown>).created_at ||
-        (message as Record<string, unknown>).date ||
-        (message as Record<string, unknown>).timestamp;
+      const timestamp = message.created_at || message.date || message.timestamp;
       if (!timestamp) {
         return true; // Include messages without timestamps
       }
 
-      const msgTime = new Date(timestamp as string);
+      const msgTime = new Date(timestamp);
       return msgTime >= startTime;
     });
 
@@ -181,12 +179,9 @@ export async function GET(request: NextRequest) {
     validMessages.sort((a, b) => {
       // Get timestamp from either message
       const getTime = (msg: LettaMessage) => {
-        const timestamp =
-          (msg as Record<string, unknown>).created_at ||
-          (msg as Record<string, unknown>).date ||
-          (msg as Record<string, unknown>).timestamp;
+        const timestamp = msg.created_at || msg.date || msg.timestamp;
         if (!timestamp) return 0; // Put messages without timestamps first
-        return new Date(timestamp as string).getTime();
+        return new Date(timestamp).getTime();
       };
 
       return getTime(a.message) - getTime(b.message);

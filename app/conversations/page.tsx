@@ -33,6 +33,7 @@ interface LettaMessage {
   tool_return?: string;
   created_at?: string;
   date?: string;
+  timestamp?: string;
 }
 
 interface ConversationFlow {
@@ -49,7 +50,7 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ConversationFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTimeRange, setSelectedTimeRange] = useState("24h");
+  const [selectedTimeRange, setSelectedTimeRange] = useState("3h");
   const [cacheStatus, setCacheStatus] = useState<string>("enabled");
 
   // Utility to check localStorage usage
@@ -63,8 +64,9 @@ export default function ConversationsPage() {
       }
       const sizeInMB = totalSize / (1024 * 1024);
       console.log(`Total localStorage usage: ${sizeInMB.toFixed(2)} MB`);
-      
-      if (sizeInMB > 8) { // Close to 10MB limit
+
+      if (sizeInMB > 8) {
+        // Close to 10MB limit
         setCacheStatus("near_limit");
       } else if (sizeInMB > 4) {
         setCacheStatus("moderate");
@@ -77,23 +79,138 @@ export default function ConversationsPage() {
     }
   };
 
+  // Get time range hierarchy for smart caching
+  const getTimeRangeHours = (range: string): number => {
+    switch (range) {
+      case "1h":
+        return 1;
+      case "3h":
+        return 3;
+      case "24h":
+        return 24;
+      case "7d":
+        return 24 * 7;
+      case "30d":
+        return 24 * 30;
+      default:
+        return 24;
+    }
+  };
+
+  // Check if we have cached data that covers the requested time range
+  const findUsableCachedData = useCallback((requestedRange: string) => {
+    const requestedHours = getTimeRangeHours(requestedRange);
+    const timeRanges = ["1h", "3h", "24h", "7d", "30d"];
+
+    // Check for cached data from broader time ranges that would include our requested range
+    for (const range of timeRanges) {
+      const rangeHours = getTimeRangeHours(range);
+      if (rangeHours >= requestedHours) {
+        const cacheKey = `conversations_${range}`;
+        const cacheTimestampKey = `conversations_${range}_timestamp`;
+        const cachedData = localStorage.getItem(cacheKey);
+        const cacheTimestamp = localStorage.getItem(cacheTimestampKey);
+
+        if (cachedData && cacheTimestamp) {
+          const cacheDuration = 5 * 60 * 1000; // 5 minutes
+          const isRecentCache =
+            Date.now() - parseInt(cacheTimestamp) < cacheDuration;
+
+          if (isRecentCache) {
+            console.log(
+              `✅ Found usable cached data from ${range} for ${requestedRange} request`
+            );
+            return {
+              data: JSON.parse(cachedData) as ConversationFlow[],
+              sourceRange: range,
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }, []);
+
+  // Filter cached data to match the requested time range
+  const filterDataByTimeRange = (
+    data: ConversationFlow[],
+    timeRange: string
+  ): ConversationFlow[] => {
+    const now = new Date();
+    let startTime: Date;
+
+    switch (timeRange) {
+      case "1h":
+        startTime = new Date(now.getTime() - 60 * 60 * 1000);
+        break;
+      case "3h":
+        startTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+        break;
+      case "24h":
+        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case "7d":
+        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "30d":
+        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        return data; // Return all data if range is unknown
+    }
+
+    return data
+      .map((conversation) => ({
+        ...conversation,
+        messages: conversation.messages.filter((item) => {
+          const msgTime = new Date(
+            item.message.created_at ||
+              item.message.date ||
+              item.message.timestamp ||
+              conversation.timestamp
+          );
+          return msgTime >= startTime;
+        }),
+      }))
+      .filter((conversation) => conversation.messages.length > 0); // Remove empty conversations
+  };
+
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
-    const cacheKey = `conversations_${selectedTimeRange}`;
-    const cacheTimestampKey = `conversations_${selectedTimeRange}_timestamp`;
-    const cacheDuration = 5 * 60 * 1000; // 5 minutes
-    
+
     try {
-      // 1. Check if we have fresh cached data first
+      // 1. First check if we can reuse cached data from a broader time range
+      const usableCachedData = findUsableCachedData(selectedTimeRange);
+
+      if (usableCachedData) {
+        console.log(
+          `🔄 Filtering ${usableCachedData.sourceRange} data for ${selectedTimeRange} view`
+        );
+        const filteredData = filterDataByTimeRange(
+          usableCachedData.data,
+          selectedTimeRange
+        );
+        setConversations(filteredData);
+        setLoading(false);
+        checkStorageUsage();
+        return;
+      }
+
+      // 2. Check for exact cache match
+      const cacheKey = `conversations_${selectedTimeRange}`;
+      const cacheTimestampKey = `conversations_${selectedTimeRange}_timestamp`;
+      const cacheDuration = 5 * 60 * 1000; // 5 minutes
+
       const cachedData = localStorage.getItem(cacheKey);
       const cacheTimestamp = localStorage.getItem(cacheTimestampKey);
-      
+
       if (cachedData && cacheTimestamp) {
-        const isRecentCache = Date.now() - parseInt(cacheTimestamp) < cacheDuration;
+        const isRecentCache =
+          Date.now() - parseInt(cacheTimestamp) < cacheDuration;
         if (isRecentCache) {
-          console.log("✅ Loading from cache - data is fresh");
+          console.log("✅ Loading from exact cache match - data is fresh");
           setConversations(JSON.parse(cachedData));
           setLoading(false);
           checkStorageUsage();
@@ -105,117 +222,202 @@ export default function ConversationsPage() {
         console.log("🆕 No cache found, fetching fresh data");
       }
 
-      // 2. Fetch fresh data from API
-      console.log("📡 Fetching conversations from API...");
-      
-      const conversationsResponse = await fetch(`/api/letta/conversations?timeRange=${selectedTimeRange}`);
+      // 3. Fetch fresh data from API
+      console.log(
+        `📡 Fetching conversations from API for ${selectedTimeRange}...`
+      );
+
+      const conversationsResponse = await fetch(
+        `/api/letta/conversations?timeRange=${selectedTimeRange}`
+      );
       if (!conversationsResponse.ok) {
-        throw new Error(`Failed to fetch conversations: ${conversationsResponse.statusText}`);
+        throw new Error(
+          `Failed to fetch conversations: ${conversationsResponse.statusText}`
+        );
       }
-      
+
       const conversationsData = await conversationsResponse.json();
       console.log(`📊 Received ${conversationsData.length} conversation flows`);
-      
-      // 3. Successfully loaded - now set the data
+
+      // 4. Successfully loaded - now set the data
       setConversations(conversationsData);
-      
-      // 4. Try to cache the successfully loaded data
+
+      // 5. Try to cache the successfully loaded data
       try {
         const dataString = JSON.stringify(conversationsData);
         const sizeInMB = new Blob([dataString]).size / (1024 * 1024);
-        
-        if (sizeInMB < 3) { // Increased limit to 3MB
+
+        if (sizeInMB < 3) {
+          // Increased limit to 3MB
           localStorage.setItem(cacheKey, dataString);
           localStorage.setItem(cacheTimestampKey, Date.now().toString());
           console.log(`💾 Cached successfully (${sizeInMB.toFixed(2)} MB)`);
         } else {
-          console.warn(`⚠️ Data too large to cache (${sizeInMB.toFixed(2)} MB), will fetch fresh each time`);
+          console.warn(
+            `⚠️ Data too large to cache (${sizeInMB.toFixed(
+              2
+            )} MB), will fetch fresh each time`
+          );
         }
       } catch (storageError) {
-        console.warn("💾 Storage quota exceeded, clearing old cache and skipping new cache", storageError);
+        console.warn(
+          "💾 Storage quota exceeded, clearing old cache and skipping new cache",
+          storageError
+        );
         // Clear old conversation cache if storage is full
-        Object.keys(localStorage).forEach(key => {
-          if (key.startsWith('conversations_')) {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("conversations_")) {
             localStorage.removeItem(key);
           }
         });
       }
-      
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch conversations");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch conversations"
+      );
       console.error("❌ Error fetching conversations:", err);
     } finally {
       setLoading(false);
       checkStorageUsage();
     }
-  }, [selectedTimeRange]);
+  }, [selectedTimeRange, findUsableCachedData]);
 
   const clearCacheAndRefresh = useCallback(() => {
     // Clear all conversation cache (including old format)
-    ['1h', '24h', '7d', '30d'].forEach(timeRange => {
+    ["1h", "3h", "24h", "7d", "30d"].forEach((timeRange) => {
       localStorage.removeItem(`conversations_${timeRange}`);
       localStorage.removeItem(`conversations_${timeRange}_timestamp`);
     });
-    
+
     // Also clear any old cache keys
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('conversations_')) {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith("conversations_")) {
         localStorage.removeItem(key);
       }
     });
-    
-    console.log('All conversation cache cleared');
-    
+
+    console.log("All conversation cache cleared");
+
     // Fetch fresh data
     fetchConversations();
   }, [fetchConversations]);
 
   useEffect(() => {
-    // Clear cache to ensure new debugging format - force clear this time
-    const hasNewDebugFormat = localStorage.getItem('conversations_debug_format_v2');
-    if (!hasNewDebugFormat) {
-      console.log('🔧 Clearing cache to get new API debugging format');
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('conversations_')) {
+    // Clear cache to ensure new improved agent classification
+    const hasImprovedClassification = localStorage.getItem(
+      "conversations_improved_classification_v1"
+    );
+    if (!hasImprovedClassification) {
+      console.log("🔧 Clearing cache to get improved agent classification");
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("conversations_")) {
           localStorage.removeItem(key);
         }
       });
-      localStorage.setItem('conversations_debug_format_v2', 'true');
+      localStorage.setItem("conversations_improved_classification_v1", "true");
     }
-    
+
     fetchConversations();
   }, [selectedTimeRange, fetchConversations]);
-
 
   const categorizeAgent = (agent: LettaAgent) => {
     const persona = agent.memory?.persona?.toLowerCase() || "";
     const name = agent.name.toLowerCase();
 
+    // Debug logging to see what we're working with
+    console.log(`🔍 Categorizing agent: "${agent.name}"`, {
+      name: name,
+      persona: persona.substring(0, 100) + (persona.length > 100 ? "..." : ""),
+      memory: agent.memory,
+    });
+
+    // PRIORITY 1: Explicit name-based classification (most reliable)
+    // Broker detection (check first since it's most specific)
     if (
-      persona.includes("client") ||
-      persona.includes("user") ||
-      persona.includes("human") ||
-      name.includes("client") ||
-      name.includes("user")
+      name.includes("broker") ||
+      name.includes("vow") ||
+      name.includes("orchestrat") ||
+      name.includes("coordinator")
     ) {
+      console.log(`✅ Classified "${agent.name}" as BROKER (by name)`);
+      return "broker";
+    }
+
+    // Service detection
+    if (
+      name.includes("service") ||
+      name.includes("gpt") ||
+      name.includes("claude") ||
+      name.includes("api") ||
+      name.includes("assistant") ||
+      name.includes("model")
+    ) {
+      console.log(`✅ Classified "${agent.name}" as SERVICE (by name)`);
+      return "service";
+    }
+
+    // Client detection
+    if (
+      name.includes("client") ||
+      name.includes("user") ||
+      name.includes("customer")
+    ) {
+      console.log(`✅ Classified "${agent.name}" as CLIENT (by name)`);
       return "client";
-    } else if (
+    }
+
+    // PRIORITY 2: Persona-based classification (less reliable, more context needed)
+    // More comprehensive broker detection
+    if (
+      persona.includes("broker") ||
+      persona.includes("orchestrat") ||
+      persona.includes("coordinator") ||
+      persona.includes("mediator") ||
+      persona.includes("facilitator") ||
+      persona.includes("vow") ||
+      persona.includes("intelligence") ||
+      persona.includes("brokerage")
+    ) {
+      console.log(`✅ Classified "${agent.name}" as BROKER (by persona)`);
+      return "broker";
+    }
+
+    // More comprehensive service detection
+    if (
       persona.includes("service") ||
       persona.includes("api") ||
       persona.includes("model") ||
-      name.includes("service") ||
-      name.includes("gpt") ||
-      name.includes("claude")
+      persona.includes("provider") ||
+      persona.includes("assistant") ||
+      persona.includes("helper") ||
+      persona.includes("gpt") ||
+      persona.includes("claude") ||
+      persona.includes("llm")
     ) {
+      console.log(`✅ Classified "${agent.name}" as SERVICE (by persona)`);
       return "service";
-    } else if (
-      persona.includes("broker") ||
-      persona.includes("orchestrat") ||
-      name.includes("broker") ||
-      name.includes("vow")
-    ) {
-      return "broker";
     }
+
+    // More careful client detection (avoid false positives from "human" in context)
+    if (
+      persona.includes("client") ||
+      persona.includes("customer") ||
+      persona.includes("requester") ||
+      // Only match "user" or "human" if they appear in client-specific contexts
+      (persona.includes("user") &&
+        (persona.includes("request") || persona.includes("need"))) ||
+      (persona.includes("human") &&
+        (persona.includes("client") || persona.includes("customer")))
+    ) {
+      console.log(`✅ Classified "${agent.name}" as CLIENT (by persona)`);
+      return "client";
+    }
+
+    console.log(
+      `⚠️ Could not classify "${agent.name}" - defaulting to GENERAL`
+    );
+    console.log(`   Name: "${name}"`);
+    console.log(`   Persona preview: "${persona.substring(0, 200)}..."`);
     return "general";
   };
 
@@ -226,28 +428,32 @@ export default function ConversationsPage() {
           bg: "from-blue-500 to-cyan-500",
           border: "border-blue-500/30",
           text: "text-blue-400",
-          icon: "👤"
+          icon: "👤",
+          label: "Client",
         };
       case "service":
         return {
           bg: "from-cyan-500 to-teal-500",
           border: "border-cyan-500/30",
           text: "text-cyan-400",
-          icon: "⚙️"
+          icon: "⚙️",
+          label: "Service",
         };
       case "broker":
         return {
           bg: "from-purple-500 to-blue-500",
           border: "border-purple-500/30",
           text: "text-purple-400",
-          icon: "🧠"
+          icon: "🧠",
+          label: "Broker",
         };
       default:
         return {
-          bg: "from-gray-500 to-slate-500",
-          border: "border-gray-500/30",
-          text: "text-gray-400",
-          icon: "🤖"
+          bg: "from-orange-500 to-red-500", // Make general type stand out
+          border: "border-orange-500/30",
+          text: "text-orange-400",
+          icon: "❓", // Question mark to indicate unclear classification
+          label: "Unclassified",
         };
     }
   };
@@ -285,11 +491,11 @@ export default function ConversationsPage() {
     if (message.reasoning) return message.reasoning;
     if (message.tool_call) {
       const args = message.tool_call.arguments;
-      if (args && typeof args === 'object') {
+      if (args && typeof args === "object") {
         // Format tool call arguments nicely
         const formattedArgs = Object.entries(args)
           .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-          .join(', ');
+          .join(", ");
         return `${message.tool_call.name}(${formattedArgs})`;
       }
       return `${message.tool_call.name}()`;
@@ -315,7 +521,7 @@ export default function ConversationsPage() {
         // Not JSON
       }
     }
-    
+
     switch (message.message_type) {
       case "user_message":
         return "👤";
@@ -381,13 +587,15 @@ export default function ConversationsPage() {
               Multi-Agent Conversations
             </h1>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-6">
-              View the complete conversation flows between client agents, broker agents, and service agents
+              View the complete conversation flows between client agents, broker
+              agents, and service agents
             </p>
-            
+
             {/* Time Range Filter */}
             <div className="flex justify-center gap-2 mb-8">
               {[
                 { value: "1h", label: "Last Hour" },
+                { value: "3h", label: "Last 3 Hours" },
                 { value: "24h", label: "Last 24 Hours" },
                 { value: "7d", label: "Last 7 Days" },
                 { value: "30d", label: "Last 30 Days" },
@@ -445,7 +653,33 @@ export default function ConversationsPage() {
                       </span>
                     </div>
                     <p className="text-sm text-gray-400 mt-1">
-                      {conversation.messages.length} messages across {new Set(conversation.messages.map(m => m.agent.id)).size} agents
+                      {conversation.messages.length} messages across{" "}
+                      {
+                        new Set(conversation.messages.map((m) => m.agent.id))
+                          .size
+                      }{" "}
+                      agents
+                      {/* Debug: Show agent type distribution */}
+                      {(() => {
+                        const agentTypes = conversation.messages.reduce(
+                          (acc, m) => {
+                            const type = categorizeAgent(m.agent);
+                            acc[type] = (acc[type] || 0) + 1;
+                            return acc;
+                          },
+                          {} as Record<string, number>
+                        );
+
+                        const typesSummary = Object.entries(agentTypes)
+                          .map(([type, count]) => `${count} ${type}`)
+                          .join(", ");
+
+                        return (
+                          <span className="text-xs text-gray-500 ml-2">
+                            ({typesSummary} messages)
+                          </span>
+                        );
+                      })()}
                     </p>
                   </div>
 
@@ -455,21 +689,32 @@ export default function ConversationsPage() {
                       {conversation.messages.map((item, msgIndex) => {
                         const agentType = categorizeAgent(item.agent);
                         const colors = getAgentTypeColor(agentType);
-                        
+
                         const messageContent = getMessageContent(item.message);
                         const messageIcon = getMessageIcon(item.message);
-                        const isHeartbeat = item.message.content?.includes('"type": "heartbeat"');
-                        const isToolMessage = item.message.message_type === "tool_call_message" || item.message.message_type === "tool_return_message";
-                        
+                        const isHeartbeat = item.message.content?.includes(
+                          '"type": "heartbeat"'
+                        );
+                        const isToolMessage =
+                          item.message.message_type === "tool_call_message" ||
+                          item.message.message_type === "tool_return_message";
+
                         return (
-                          <div key={msgIndex} className={`flex items-start gap-4 ${isHeartbeat ? 'opacity-60' : ''}`}>
+                          <div
+                            key={msgIndex}
+                            className={`flex items-start gap-4 ${
+                              isHeartbeat ? "opacity-60" : ""
+                            }`}
+                          >
                             {/* Sequence Number */}
                             <div className="flex-shrink-0 w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
                               {item.sequence}
                             </div>
 
                             {/* Agent Avatar */}
-                            <div className={`flex-shrink-0 w-12 h-12 bg-gradient-to-r ${colors.bg} rounded-full flex items-center justify-center text-xl ${colors.border} border-2`}>
+                            <div
+                              className={`flex-shrink-0 w-12 h-12 bg-gradient-to-r ${colors.bg} rounded-full flex items-center justify-center text-xl ${colors.border} border-2`}
+                            >
                               {colors.icon}
                             </div>
 
@@ -480,10 +725,11 @@ export default function ConversationsPage() {
                                   {item.agent.name}
                                 </h4>
                                 <span className="text-xs text-gray-500 bg-slate-700 px-2 py-1 rounded capitalize">
-                                  {agentType} Agent
+                                  {colors.label}
                                 </span>
                                 <span className="text-xs text-gray-500 flex items-center gap-1">
-                                  {messageIcon} {item.message.message_type.replace('_', ' ')}
+                                  {messageIcon}{" "}
+                                  {item.message.message_type.replace("_", " ")}
                                 </span>
                                 {isHeartbeat && (
                                   <span className="text-xs text-gray-600 bg-slate-800 px-2 py-1 rounded">
@@ -492,14 +738,18 @@ export default function ConversationsPage() {
                                 )}
                               </div>
 
-                              <div className={`rounded-lg p-4 border ${
-                                isHeartbeat 
-                                  ? 'bg-slate-800/30 border-slate-600/50' 
-                                  : isToolMessage
-                                  ? 'bg-blue-900/20 border-blue-700/50'
-                                  : `bg-slate-700/50 ${colors.border}`
-                              }`}>
-                                {item.message.message_type === "tool_call_message" && item.message.tool_call ? (
+                              <div
+                                className={`rounded-lg p-4 border ${
+                                  isHeartbeat
+                                    ? "bg-slate-800/30 border-slate-600/50"
+                                    : isToolMessage
+                                    ? "bg-blue-900/20 border-blue-700/50"
+                                    : `bg-slate-700/50 ${colors.border}`
+                                }`}
+                              >
+                                {item.message.message_type ===
+                                  "tool_call_message" &&
+                                item.message.tool_call ? (
                                   <div>
                                     <div className="flex items-center gap-2 mb-2">
                                       <span className="text-xs font-mono bg-blue-800 px-2 py-1 rounded text-blue-200">
@@ -512,7 +762,7 @@ export default function ConversationsPage() {
                                   </div>
                                 ) : (
                                   <div className="text-sm text-gray-200 leading-relaxed">
-                                    {messageContent.includes('\n') ? (
+                                    {messageContent.includes("\n") ? (
                                       <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-800/50 p-2 rounded">
                                         {messageContent}
                                       </pre>
@@ -521,7 +771,7 @@ export default function ConversationsPage() {
                                     )}
                                   </div>
                                 )}
-                                
+
                                 {item.message.created_at && (
                                   <p className="text-xs text-gray-500 mt-2">
                                     {formatTimestamp(item.message.created_at)}
@@ -549,15 +799,26 @@ export default function ConversationsPage() {
             disabled={loading}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-4"
           >
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
-            {loading ? 'Refreshing...' : 'Refresh Data'}
+            {loading ? "Refreshing..." : "Refresh Data"}
           </button>
-          
+
           <div className="text-sm text-gray-400 space-y-1">
             <p>
-              Data is cached for 5 minutes. Use refresh to get the latest conversations.
+              Data is cached for 5 minutes. Use refresh to get the latest
+              conversations.
             </p>
             {cacheStatus === "near_limit" && (
               <p className="text-yellow-400">
@@ -566,7 +827,8 @@ export default function ConversationsPage() {
             )}
             {cacheStatus === "moderate" && (
               <p className="text-blue-400">
-                📊 Moderate cache usage. Some data is being cached for faster loading.
+                📊 Moderate cache usage. Some data is being cached for faster
+                loading.
               </p>
             )}
             {cacheStatus === "disabled" && (
@@ -587,7 +849,8 @@ export default function ConversationsPage() {
       <footer className="px-6 py-8 border-t border-slate-700">
         <div className="max-w-6xl mx-auto text-center">
           <p className="text-gray-400">
-            Monitoring multi-agent conversations in the Vow intelligence brokerage system.
+            Monitoring multi-agent conversations in the Vow intelligence
+            brokerage system.
           </p>
         </div>
       </footer>
